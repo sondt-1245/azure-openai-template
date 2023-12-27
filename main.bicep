@@ -9,35 +9,43 @@ param environmentName string = 'tw1'
 @description('Primary location for all resources')
 param location string = 'japaneast'
 
-param resourceGroupName string = 'openai-rg8'
+param resourceGroupName string = 'Team'
 
-param accounts int = 2
+@description('Number of teams to create')
+param teams int = 1
 
 param openAiSkuName string = 'S0'
-param openAiSkyCapacity int = 10
-param openAiServiceName string = 'openai-gpt35'
+param openAiSkyCapacity int = 100000
+param openAiServiceName string = 'sunhackathon'
 
-param chatGptDeploymentName string = 'chat'
-param chatGptModelName string = 'gpt-35-turbo'
-param chatGptDeploymentCapacity int = 30
+param chatGptModelName string = 'gpt-35-turbo-16k'
+param chatGptModelVersion string = '0613'
+param chatGptDeploymentCapacity int = 100000
+
+param textEmbeddingModelName string = 'text-embedding-ada-002'
+param textEmbeddingVersion string = '2'
+param textEmbeddingDeploymentCapacity int = 100000
 
 var abbrs = loadJsonContent('./abbreviations.json')
 var resourceToken = toLower(uniqueString(subscription().id, environmentName, location))
 var tags = { 'env-name': environmentName }
 
 // Organize resources in a resource group
-resource resourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' = {
-  name: !empty(resourceGroupName) ? resourceGroupName : '${abbrs.resourcesResourceGroups}${environmentName}'
+resource resourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' = [for index in range(0, teams):{
+  name: !empty(resourceGroupName) ? '${resourceGroupName}${index+2}' : '${abbrs.resourcesResourceGroups}${environmentName}'
   location: location
   tags: tags
-}
+}]
 
 
-module openAi './openai.bicep' = [for index in  range(0, accounts):{
-  name: 'openai-for-account-${index}'
-  scope: resourceGroup
+module openAi './openai.bicep' = [for index in range(0, teams):{
+  name: '${openAiServiceName}-${index+2}'
+  scope: resourceGroup[index]
+  dependsOn: [
+    resourceGroup[index]
+  ]
   params: {
-    name: !empty(openAiServiceName) ? '${openAiServiceName}-${index}' : '${abbrs.cognitiveServicesAccounts}${resourceToken}'
+    name: !empty(openAiServiceName) ? '${openAiServiceName}-${index+2}' : '${abbrs.cognitiveServicesAccounts}${resourceToken}'
     location: location
     tags: tags
     sku: {
@@ -46,25 +54,43 @@ module openAi './openai.bicep' = [for index in  range(0, accounts):{
     }
     deployments: [
       {
-        name: '${chatGptDeploymentName}-${index}'
+        name: 'GPT35TURBO16K'
         model: {
           format: 'OpenAI'
           name: chatGptModelName
-          version: '0301'
+          version: chatGptModelVersion
         }
         scaleSettings: {
           scaleType: 'Standard'
         }
         sku: {
           capacity: chatGptDeploymentCapacity
+          name: 'Standard'
         }
+        raiPolicyName: 'Microsoft.Default'
+      }
+      {
+        name: 'ADA'
+        model: {
+          format: 'OpenAI'
+          name: textEmbeddingModelName
+          version: textEmbeddingVersion
+        }
+        scaleSettings: {
+          scaleType: 'Standard'
+        }
+        sku: {
+          capacity: textEmbeddingDeploymentCapacity
+          name: 'Standard'
+        }
+        raiPolicyName: 'Microsoft.Default'
       }
     ]
   }
 }]
 
 // Deployment outputs
-output accountEndpoints array = [for i in range(0, accounts): {
+output accountEndpoints array = [for i in range(0, teams): {
   endpoint: openAi[i].outputs.endpoint
-  deployment: chatGptDeploymentName
+  deployment: openAi[i].outputs.name
 }]

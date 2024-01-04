@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.24.24.22086",
-      "templateHash": "9574168149543000949"
+      "templateHash": "4584799459441621261"
     }
   },
   "parameters": {
@@ -32,11 +32,10 @@
     },
     "teams": {
       "type": "int",
-      "defaultValue": 1
-    },
-    "accounts": {
-      "type": "int",
-      "defaultValue": 1
+      "defaultValue": 30,
+      "metadata": {
+        "description": "Number of teams to create"
+      }
     },
     "openAiSkuName": {
       "type": "string",
@@ -44,15 +43,11 @@
     },
     "openAiSkyCapacity": {
       "type": "int",
-      "defaultValue": 10
+      "defaultValue": 100000
     },
     "openAiServiceName": {
       "type": "string",
       "defaultValue": "sunhackathon"
-    },
-    "chatGptDeploymentName": {
-      "type": "string",
-      "defaultValue": "chat"
     },
     "chatGptModelName": {
       "type": "string",
@@ -64,7 +59,7 @@
     },
     "chatGptDeploymentCapacity": {
       "type": "int",
-      "defaultValue": 100
+      "defaultValue": 100000
     },
     "textEmbeddingModelName": {
       "type": "string",
@@ -76,7 +71,7 @@
     },
     "textEmbeddingDeploymentCapacity": {
       "type": "int",
-      "defaultValue": 100
+      "defaultValue": 100000
     }
   },
   "variables": {
@@ -222,31 +217,22 @@
   "resources": [
     {
       "copy": {
-        "name": "resourceGroup",
-        "count": "[length(range(0, parameters('teams')))]"
-      },
-      "type": "Microsoft.Resources/resourceGroups",
-      "apiVersion": "2021-04-01",
-      "name": "[if(not(empty(parameters('resourceGroupName'))), format('{0}{1}', parameters('resourceGroupName'), add(range(0, parameters('teams'))[copyIndex()], 2)), format('{0}{1}', variables('abbrs').resourcesResourceGroups, parameters('environmentName')))]",
-      "location": "[parameters('location')]",
-      "tags": "[variables('tags')]"
-    },
-    {
-      "copy": {
         "name": "openAi",
-        "count": "[length(range(0, parameters('teams')))]"
+        "count": "[length(range(0, parameters('teams')))]",
+        "mode": "serial",
+        "batchSize": 1
       },
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2022-09-01",
-      "name": "[format('{0}-{1}', parameters('openAiServiceName'), add(range(0, parameters('teams'))[copyIndex()], 2))]",
-      "resourceGroup": "[if(not(empty(parameters('resourceGroupName'))), format('{0}{1}', parameters('resourceGroupName'), add(range(0, parameters('teams'))[range(0, parameters('teams'))[copyIndex()]], 2)), format('{0}{1}', variables('abbrs').resourcesResourceGroups, parameters('environmentName')))]",
+      "name": "[format('{0}{1}', parameters('openAiServiceName'), add(range(0, parameters('teams'))[copyIndex()], 31))]",
+      "resourceGroup": "[if(not(empty(parameters('resourceGroupName'))), format('{0}{1}', parameters('resourceGroupName'), add(range(0, parameters('teams'))[range(0, parameters('teams'))[copyIndex()]], 31)), format('{0}{1}', variables('abbrs').resourcesResourceGroups, parameters('environmentName')))]",
       "properties": {
         "expressionEvaluationOptions": {
           "scope": "inner"
         },
         "mode": "Incremental",
         "parameters": {
-          "name": "[if(not(empty(parameters('openAiServiceName'))), createObject('value', format('{0}-{1}', parameters('openAiServiceName'), add(range(0, parameters('teams'))[copyIndex()], 2))), createObject('value', format('{0}{1}', variables('abbrs').cognitiveServicesAccounts, variables('resourceToken'))))]",
+          "name": "[if(not(empty(parameters('openAiServiceName'))), createObject('value', format('{0}{1}', parameters('openAiServiceName'), add(range(0, parameters('teams'))[copyIndex()], 31))), createObject('value', format('{0}{1}', variables('abbrs').cognitiveServicesAccounts, variables('resourceToken'))))]",
           "location": {
             "value": "[parameters('location')]"
           },
@@ -303,7 +289,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.24.24.22086",
-              "templateHash": "11576518029515201460"
+              "templateHash": "18119905138452358089"
             }
           },
           "parameters": {
@@ -372,7 +358,9 @@
               "name": "[format('{0}/{1}', parameters('name'), parameters('deployments')[copyIndex()].name)]",
               "properties": {
                 "model": "[parameters('deployments')[copyIndex()].model]",
-                "raiPolicyName": "[if(contains(parameters('deployments')[copyIndex()], 'raiPolicyName'), parameters('deployments')[copyIndex()].raiPolicyName, null())]"
+                "raiPolicyName": "[if(contains(parameters('deployments')[copyIndex()], 'raiPolicyName'), parameters('deployments')[copyIndex()].raiPolicyName, null())]",
+                "capacitySettings": "[parameters('deployments')[copyIndex()].sku]",
+                "scaleSettings": "[parameters('deployments')[copyIndex()].scaleSettings]"
               },
               "dependsOn": [
                 "[resourceId('Microsoft.CognitiveServices/accounts', parameters('name'))]"
@@ -391,13 +379,18 @@
             "name": {
               "type": "string",
               "value": "[parameters('name')]"
+            },
+            "key1": {
+              "type": "string",
+              "value": "[listKeys(resourceId('Microsoft.CognitiveServices/accounts', parameters('name')), '2023-10-01-preview').key1]"
+            },
+            "key2": {
+              "type": "string",
+              "value": "[listKeys(resourceId('Microsoft.CognitiveServices/accounts', parameters('name')), '2023-10-01-preview').key2]"
             }
           }
         }
-      },
-      "dependsOn": [
-        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', if(not(empty(parameters('resourceGroupName'))), format('{0}{1}', parameters('resourceGroupName'), add(range(0, parameters('teams'))[range(0, parameters('teams'))[copyIndex()]], 2)), format('{0}{1}', variables('abbrs').resourcesResourceGroups, parameters('environmentName'))))]"
-      ]
+      }
     }
   ],
   "outputs": {
@@ -406,8 +399,12 @@
       "copy": {
         "count": "[length(range(0, parameters('teams')))]",
         "input": {
-          "endpoint": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, if(not(empty(parameters('resourceGroupName'))), format('{0}{1}', parameters('resourceGroupName'), add(range(0, parameters('teams'))[copyIndex()], 2)), format('{0}{1}', variables('abbrs').resourcesResourceGroups, parameters('environmentName')))), 'Microsoft.Resources/deployments', format('{0}-{1}', parameters('openAiServiceName'), add(range(0, parameters('teams'))[range(0, parameters('teams'))[copyIndex()]], 2))), '2022-09-01').outputs.endpoint.value]",
-          "deployment": "[parameters('chatGptDeploymentName')]"
+          "endpoint": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, if(not(empty(parameters('resourceGroupName'))), format('{0}{1}', parameters('resourceGroupName'), add(range(0, parameters('teams'))[copyIndex()], 31)), format('{0}{1}', variables('abbrs').resourcesResourceGroups, parameters('environmentName')))), 'Microsoft.Resources/deployments', format('{0}{1}', parameters('openAiServiceName'), add(range(0, parameters('teams'))[range(0, parameters('teams'))[copyIndex()]], 31))), '2022-09-01').outputs.endpoint.value]",
+          "id": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, if(not(empty(parameters('resourceGroupName'))), format('{0}{1}', parameters('resourceGroupName'), add(range(0, parameters('teams'))[copyIndex()], 31)), format('{0}{1}', variables('abbrs').resourcesResourceGroups, parameters('environmentName')))), 'Microsoft.Resources/deployments', format('{0}{1}', parameters('openAiServiceName'), add(range(0, parameters('teams'))[range(0, parameters('teams'))[copyIndex()]], 31))), '2022-09-01').outputs.id.value]",
+          "name": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, if(not(empty(parameters('resourceGroupName'))), format('{0}{1}', parameters('resourceGroupName'), add(range(0, parameters('teams'))[copyIndex()], 31)), format('{0}{1}', variables('abbrs').resourcesResourceGroups, parameters('environmentName')))), 'Microsoft.Resources/deployments', format('{0}{1}', parameters('openAiServiceName'), add(range(0, parameters('teams'))[range(0, parameters('teams'))[copyIndex()]], 31))), '2022-09-01').outputs.name.value]",
+          "key1": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, if(not(empty(parameters('resourceGroupName'))), format('{0}{1}', parameters('resourceGroupName'), add(range(0, parameters('teams'))[copyIndex()], 31)), format('{0}{1}', variables('abbrs').resourcesResourceGroups, parameters('environmentName')))), 'Microsoft.Resources/deployments', format('{0}{1}', parameters('openAiServiceName'), add(range(0, parameters('teams'))[range(0, parameters('teams'))[copyIndex()]], 31))), '2022-09-01').outputs.key1.value]",
+          "key2": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, if(not(empty(parameters('resourceGroupName'))), format('{0}{1}', parameters('resourceGroupName'), add(range(0, parameters('teams'))[copyIndex()], 31)), format('{0}{1}', variables('abbrs').resourcesResourceGroups, parameters('environmentName')))), 'Microsoft.Resources/deployments', format('{0}{1}', parameters('openAiServiceName'), add(range(0, parameters('teams'))[range(0, parameters('teams'))[copyIndex()]], 31))), '2022-09-01').outputs.key2.value]",
+          "deployment": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, if(not(empty(parameters('resourceGroupName'))), format('{0}{1}', parameters('resourceGroupName'), add(range(0, parameters('teams'))[copyIndex()], 31)), format('{0}{1}', variables('abbrs').resourcesResourceGroups, parameters('environmentName')))), 'Microsoft.Resources/deployments', format('{0}{1}', parameters('openAiServiceName'), add(range(0, parameters('teams'))[range(0, parameters('teams'))[copyIndex()]], 31))), '2022-09-01').outputs.name.value]"
         }
       }
     }

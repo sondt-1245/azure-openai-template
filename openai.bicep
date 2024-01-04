@@ -35,8 +35,11 @@ resource deployment 'Microsoft.CognitiveServices/accounts/deployments@2023-10-01
     model: deployment.model
     raiPolicyName: contains(deployment, 'raiPolicyName') ? deployment.raiPolicyName : null
   }
+  sku: deployment.sku
 }]
 
 output endpoint string = account.properties.endpoint
 output id string = account.id
 output name string = account.name
+output key1 string = account.listKeys().key1
+output key2 string = account.listKeys().key2
